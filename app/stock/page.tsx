@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit2, Trash2, Save, X, Settings, Download, Upload } from "lucide-react" // Added Download, Upload icons
-import { useEffect, useState, useMemo, useRef } from "react" // Added useRef
+import { Plus, Edit2, Trash2, Save, X, Settings, Download, Upload } from "lucide-react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
@@ -19,16 +19,19 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { exportToCsv, importFromCsv } from "@/lib/csv" // Import CSV utilities
+import { exportToCsv, importFromCsv } from "@/lib/csv"
+import { getClientSideSupabase } from "@/lib/supabase-browser"
 
 interface StockItem {
   id: string
   name: string
   sku: string
-  unitCost: number
-  unitPrice: number
+  unit_cost: number
+  unit_price: number
   quantity: number
   category: string
+  // user_id: string // Removed
+  created_at: string
 }
 
 export default function StockPage() {
@@ -38,84 +41,36 @@ export default function StockPage() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("All")
   const [categories, setCategories] = useState<string[]>([])
   const [newCategoryName, setNewCategoryName] = useState<string>("")
-  const fileInputRef = useRef<HTMLInputElement>(null) // Ref for file input
+  const [loading, setLoading] = useState(true)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const supabase = getClientSideSupabase()
 
   useEffect(() => {
-    // Load stock items
-    const savedStock = localStorage.getItem("inventory-stock")
-    if (savedStock) {
-      setStockItems(JSON.parse(savedStock))
-    } else {
-      const defaultStock = [
-        {
-          id: "1",
-          name: "Samsung Galaxy A54",
-          sku: "SGH-A54",
-          unitCost: 45000,
-          unitPrice: 52000,
-          quantity: 25,
-          category: "Smartphones",
-        },
-        {
-          id: "2",
-          name: "iPhone 13",
-          sku: "APL-IP13",
-          unitCost: 95000,
-          unitPrice: 110000,
-          quantity: 15,
-          category: "Smartphones",
-        },
-        {
-          id: "3",
-          name: "Sony WH-1000XM4",
-          sku: "SNY-WH4",
-          unitCost: 28000,
-          unitPrice: 35000,
-          quantity: 40,
-          category: "Headphones",
-        },
-        {
-          id: "4",
-          name: "MacBook Air M2",
-          sku: "APL-MBA2",
-          unitCost: 125000,
-          unitPrice: 145000,
-          quantity: 8,
-          category: "Laptops",
-        },
-        {
-          id: "5",
-          name: "Logitech MX Master 3S",
-          sku: "LOG-MXM3S",
-          unitCost: 8000,
-          unitPrice: 10000,
-          quantity: 30,
-          category: "Mouse",
-        },
-        {
-          id: "6",
-          name: "HyperX Alloy Origins",
-          sku: "HYP-AO",
-          unitCost: 12000,
-          unitPrice: 15000,
-          quantity: 20,
-          category: "Keyboards",
-        },
-        {
-          id: "7",
-          name: "Xbox Wireless Controller",
-          sku: "XBX-WC",
-          unitCost: 7000,
-          unitPrice: 9000,
-          quantity: 18,
-          category: "Controllers",
-        },
-      ]
-      setStockItems(defaultStock)
-      localStorage.setItem("inventory-stock", JSON.stringify(defaultStock))
+    const fetchStockItems = async () => {
+      setLoading(true)
+      // No need to fetch user_id for filtering anymore
+      // const { data: userData, error: userError } = await supabase.auth.getUser()
+      // if (userError || !userData?.user) {
+      //   console.error("Error fetching user:", userError?.message)
+      //   setLoading(false)
+      //   return
+      // }
+      // const userId = userData.user.id // Removed
+
+      try {
+        // Removed .eq("user_id", userId) filter
+        const { data, error } = await supabase.from("stock").select("*")
+        if (error) throw error
+        setStockItems(data as StockItem[])
+      } catch (error: any) {
+        console.error("Error fetching stock items:", error.message)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    // Load categories
+    fetchStockItems()
+
     const savedCategories = localStorage.getItem("inventory-categories")
     if (savedCategories) {
       setCategories(JSON.parse(savedCategories))
@@ -133,42 +88,51 @@ export default function StockPage() {
       setCategories(defaultCategories)
       localStorage.setItem("inventory-categories", JSON.stringify(defaultCategories))
     }
-  }, [])
-
-  const saveStockToLocalStorage = (items: StockItem[]) => {
-    localStorage.setItem("inventory-stock", JSON.stringify(items))
-  }
+  }, [supabase])
 
   const saveCategoriesToLocalStorage = (cats: string[]) => {
     localStorage.setItem("inventory-categories", JSON.stringify(cats))
   }
 
-  // Function to generate SKU from product name
   const generateSkuFromName = (name: string): string => {
     if (!name) return ""
     const cleanedName = name
       .toUpperCase()
       .replace(/[^A-Z0-9\s]/g, "")
       .replace(/\s+/g, "-")
-    const uniqueId = Date.now().toString().slice(-4) // Last 4 digits of timestamp for uniqueness
+    const uniqueId = Date.now().toString().slice(-4)
     return `${cleanedName}-${uniqueId}`
   }
 
-  const addNewItem = () => {
-    const newItem: StockItem = {
-      id: Date.now().toString(),
+  const addNewItem = async () => {
+    // No need to fetch user_id for insertion anymore
+    // const { data: userData, error: userError } = await supabase.auth.getUser()
+    // if (userError || !userData?.user) {
+    //   console.error("Error getting user for new item:", userError?.message)
+    //   return
+    // }
+    // const userId = userData.user.id // Removed
+
+    const newItem: Omit<StockItem, "id" | "created_at"> = {
       name: "",
-      sku: "", // SKU will be generated when name is typed
-      unitCost: 0,
-      unitPrice: 0,
+      sku: "",
+      unit_cost: 0,
+      unit_price: 0,
       quantity: 0,
-      category: categories.length > 0 ? categories[0] : "", // Default to first category or empty
+      category: categories.length > 0 ? categories[0] : "",
+      // user_id: userId, // Removed
     }
-    const updatedItems = [...stockItems, newItem]
-    setStockItems(updatedItems)
-    saveStockToLocalStorage(updatedItems)
-    setEditingId(newItem.id)
-    setEditingItem(newItem)
+
+    try {
+      const { data, error } = await supabase.from("stock").insert([newItem]).select().single()
+      if (error) throw error
+      setStockItems((prev) => [...prev, data as StockItem])
+      setEditingId(data.id)
+      setEditingItem(data as StockItem)
+    } catch (error: any) {
+      console.error("Error adding new item:", error.message)
+      alert("Failed to add new item: " + error.message)
+    }
   }
 
   const startEditing = (item: StockItem) => {
@@ -176,14 +140,27 @@ export default function StockPage() {
     setEditingItem({ ...item })
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (editingItem) {
-      const updatedItems = stockItems.map((item) => (item.id === editingItem.id ? editingItem : item))
-      setStockItems(updatedItems)
-      saveStockToLocalStorage(updatedItems)
+      try {
+        const updates = {
+          name: editingItem.name,
+          sku: editingItem.sku,
+          unit_cost: editingItem.unit_cost,
+          unit_price: editingItem.unit_price,
+          quantity: editingItem.quantity,
+          category: editingItem.category,
+        }
+        const { error } = await supabase.from("stock").update(updates).eq("id", editingItem.id)
+        if (error) throw error
+        setStockItems((prev) => prev.map((item) => (item.id === editingItem.id ? editingItem : item)))
+        setEditingId(null)
+        setEditingItem(null)
+      } catch (error: any) {
+        console.error("Error saving item:", error.message)
+        alert("Failed to save item: " + error.message)
+      }
     }
-    setEditingId(null)
-    setEditingItem(null)
   }
 
   const cancelEdit = () => {
@@ -191,17 +168,23 @@ export default function StockPage() {
     setEditingItem(null)
   }
 
-  const deleteItem = (id: string) => {
-    const updatedItems = stockItems.filter((item) => item.id !== id)
-    setStockItems(updatedItems)
-    saveStockToLocalStorage(updatedItems)
+  const deleteItem = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this item?")) return
+
+    try {
+      const { error } = await supabase.from("stock").delete().eq("id", id)
+      if (error) throw error
+      setStockItems((prev) => prev.filter((item) => item.id !== id))
+    } catch (error: any) {
+      console.error("Error deleting item:", error.message)
+      alert("Failed to delete item: " + error.message)
+    }
   }
 
   const updateEditingItem = (field: keyof StockItem, value: string | number) => {
     if (editingItem) {
       let updatedSku = editingItem.sku
       if (field === "name" && typeof value === "string") {
-        // Only auto-generate SKU if it's a new item or SKU is empty
         if (!editingItem.sku || editingItem.name === "") {
           updatedSku = generateSkuFromName(value)
         }
@@ -224,12 +207,15 @@ export default function StockPage() {
     setCategories(updatedCategories)
     saveCategoriesToLocalStorage(updatedCategories)
 
-    // Also update any stock items that used this category to an empty string or default
     const updatedStockItems = stockItems.map((item) =>
       item.category === categoryToDelete ? { ...item, category: "" } : item,
     )
     setStockItems(updatedStockItems)
-    saveStockToLocalStorage(updatedStockItems)
+    updatedStockItems.forEach(async (item) => {
+      if (item.category === "") {
+        await supabase.from("stock").update({ category: "" }).eq("id", item.id)
+      }
+    })
   }
 
   const handleDownloadStock = () => {
@@ -240,44 +226,71 @@ export default function StockPage() {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const csvString = e.target?.result as string
           const expectedHeaders: (keyof StockItem)[] = [
             "id",
             "name",
             "sku",
-            "unitCost",
-            "unitPrice",
+            "unit_cost",
+            "unit_price",
             "quantity",
             "category",
           ]
           const importedData = importFromCsv<StockItem>(csvString, expectedHeaders)
           if (importedData.length > 0) {
-            setStockItems(importedData)
-            saveStockToLocalStorage(importedData)
+            // No need to fetch user_id for upload anymore
+            // const { data: userData, error: userError } = await supabase.auth.getUser()
+            // if (userError || !userData?.user) {
+            //   console.error("Error getting user for upload:", userError?.message)
+            //   alert("Failed to upload: User not authenticated.")
+            //   return
+            // }
+            // const userId = userData.user.id // Removed
+
+            // Removed user_id from itemsToUpsert
+            const itemsToUpsert = importedData.map((item) => ({ ...item }))
+
+            const { error } = await supabase.from("stock").upsert(itemsToUpsert, { onConflict: "id" })
+            if (error) throw error
+
+            // Removed .eq("user_id", userId) filter
+            const { data, error: fetchError } = await supabase.from("stock").select("*")
+            if (fetchError) throw fetchError
+            setStockItems(data as StockItem[])
+
             alert("Stock data uploaded successfully!")
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error uploading CSV:", error)
-          alert("Failed to upload CSV. Please check the file format.")
+          alert(
+            "Failed to upload CSV. Please check the file format and ensure you are logged in. Error: " + error.message,
+          )
         }
       }
       reader.readAsText(file)
     }
   }
 
-  const totalStockValue = stockItems.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
-  const totalRetailValue = stockItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+  const totalStockValue = stockItems.reduce((sum, item) => sum + item.unit_cost * item.quantity, 0)
+  const totalRetailValue = stockItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const totalItems = stockItems.reduce((sum, item) => sum + item.quantity, 0)
 
-  // Filtered items based on selected category
   const filteredStockItems = useMemo(() => {
     if (selectedCategoryFilter === "All") {
       return stockItems
     }
     return stockItems.filter((item) => item.category === selectedCategoryFilter)
   }, [stockItems, selectedCategoryFilter])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading stock data...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -479,26 +492,26 @@ export default function StockPage() {
                       {editingId === item.id ? (
                         <Input
                           type="number"
-                          value={editingItem?.unitCost || ""}
-                          onChange={(e) => updateEditingItem("unitCost", Number.parseFloat(e.target.value) || 0)}
+                          value={editingItem?.unit_cost || ""}
+                          onChange={(e) => updateEditingItem("unit_cost", Number.parseFloat(e.target.value) || 0)}
                           className="w-full"
                           placeholder="0"
                         />
                       ) : (
-                        `NPR ${item.unitCost.toLocaleString()}`
+                        `NPR ${item.unit_cost.toLocaleString()}`
                       )}
                     </TableCell>
                     <TableCell>
                       {editingId === item.id ? (
                         <Input
                           type="number"
-                          value={editingItem?.unitPrice || ""}
-                          onChange={(e) => updateEditingItem("unitPrice", Number.parseFloat(e.target.value) || 0)}
+                          value={editingItem?.unit_price || ""}
+                          onChange={(e) => updateEditingItem("unit_price", Number.parseFloat(e.target.value) || 0)}
                           className="w-full"
                           placeholder="0"
                         />
                       ) : (
-                        `NPR ${item.unitPrice.toLocaleString()}`
+                        `NPR ${item.unit_price.toLocaleString()}`
                       )}
                     </TableCell>
                     <TableCell>
@@ -515,7 +528,7 @@ export default function StockPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      NPR {(item.unitCost * item.quantity).toLocaleString()}
+                      NPR {(item.unit_cost * item.quantity).toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">

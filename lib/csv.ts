@@ -48,14 +48,18 @@ export function importFromCsv<T extends Record<string, any>>(csvString: string, 
     return []
   }
 
-  // Convert string values to appropriate types (numbers)
+  // Define fields that should be numbers
+  const numericFields = ["unit_cost", "unit_price", "quantity", "quantity_sold", "quantity_sent", "total_sale"]
+
   return records.map((record: Record<string, any>) => {
     const newRecord: Record<string, any> = {}
     for (const key in record) {
       if (Object.prototype.hasOwnProperty.call(record, key)) {
         const value = record[key]
-        // Attempt to convert to number if it looks like a number
-        if (["unitCost", "unitPrice", "quantity", "quantitySold", "quantitySent", "totalSale"].includes(key)) {
+        // Explicitly handle 'id' as a string, and other numeric fields as numbers
+        if (key === "id") {
+          newRecord[key] = String(value) // Ensure ID is always a string
+        } else if (numericFields.includes(key)) {
           newRecord[key] = Number.parseFloat(value) || 0
         } else {
           newRecord[key] = value

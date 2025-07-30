@@ -10,35 +10,42 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Edit2, Trash2, Save, X, Download, Upload } from "lucide-react"
 import { useEffect, useState, useRef } from "react"
 import { exportToCsv, importFromCsv } from "@/lib/csv"
+import { getClientSideSupabase } from "@/lib/supabase-browser"
 
 interface PendingItem {
   id: string
   date: string
   product: string
-  quantitySent: number
-  unitPrice: number
-  unitCost: number
+  quantity_sent: number
+  unit_price: number
+  unit_cost: number
   status: string
+  // user_id: string // Removed
+  created_at: string
 }
 
 interface StockItem {
   id: string
   name: string
   sku: string
-  unitCost: number
-  unitPrice: number
+  unit_cost: number
+  unit_price: number
   quantity: number
+  category: string
+  // user_id: string // Removed
+  created_at: string
 }
 
-// Define SaleItem interface here for use in this file
 interface SaleItem {
   id: string
   date: string
   product: string
-  quantitySold: number
-  unitPrice: number
-  unitCost: number
-  totalSale: number
+  quantity_sold: number
+  unit_price: number
+  unit_cost: number
+  total_sale: number
+  // user_id: string // Removed
+  created_at: string
 }
 
 export default function PendingPage() {
@@ -46,104 +53,80 @@ export default function PendingPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<PendingItem | null>(null)
   const [stockItems, setStockItems] = useState<StockItem[]>([])
-  const [salesItems, setSalesItems] = useState<SaleItem[]>([]) // State to manage sales data
+  const [salesItems, setSalesItems] = useState<SaleItem[]>([])
   const [isCustomProductSelected, setIsCustomProductSelected] = useState(false)
+  const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const supabase = getClientSideSupabase()
 
   useEffect(() => {
-    const savedPending = localStorage.getItem("inventory-pending")
-    const savedStock = localStorage.getItem("inventory-stock")
-    const savedSales = localStorage.getItem("inventory-sales") // Load sales data
+    const fetchAllData = async () => {
+      setLoading(true)
+      // No need to fetch user_id for filtering anymore
+      // const { data: userData, error: userError } = await supabase.auth.getUser()
+      // if (userError || !userData?.user) {
+      //   console.error("Error fetching user:", userError?.message)
+      //   setLoading(false)
+      //   return
+      // }
+      // const userId = userData.user.id // Removed
 
-    if (savedStock) {
-      setStockItems(JSON.parse(savedStock))
+      try {
+        // Removed .eq("user_id", userId) filter
+        const { data: pendingData, error: pendingError } = await supabase.from("pending").select("*")
+        if (pendingError) throw pendingError
+        setPendingItems(pendingData as PendingItem[])
+
+        // Removed .eq("user_id", userId) filter
+        const { data: stockData, error: stockError } = await supabase.from("stock").select("*")
+        if (stockError) throw stockError
+        setStockItems(stockData as StockItem[])
+
+        // Removed .eq("user_id", userId) filter
+        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
+        if (salesError) throw salesError
+        setSalesItems(salesData as SaleItem[])
+      } catch (error: any) {
+        console.error("Error fetching pending page data:", error.message)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (savedPending) {
-      setPendingItems(JSON.parse(savedPending))
-    } else {
-      const defaultPending = [
-        {
-          id: "1",
-          date: "2025-07-30",
-          product: "iPhone 13",
-          quantitySent: 1,
-          unitPrice: 110000,
-          unitCost: 95000,
-          status: "Pending",
-        },
-        {
-          id: "2",
-          date: "2025-07-29",
-          product: "MacBook Air M2",
-          quantitySent: 1,
-          unitPrice: 145000,
-          unitCost: 125000,
-          status: "Shipped",
-        },
-      ]
-      setPendingItems(defaultPending)
-      localStorage.setItem("inventory-pending", JSON.stringify(defaultPending))
-    }
+    fetchAllData()
+  }, [supabase])
 
-    if (savedSales) {
-      setSalesItems(JSON.parse(savedSales))
-    } else {
-      // Initialize with default sales if none exist
-      const defaultSales = [
-        {
-          id: "1",
-          date: "2025-07-30",
-          product: "Samsung Galaxy A54",
-          quantitySold: 2,
-          unitPrice: 52000,
-          unitCost: 45000,
-          totalSale: 104000,
-        },
-        {
-          id: "2",
-          date: "2025-07-29",
-          product: "Sony WH-1000XM4",
-          quantitySold: 1,
-          unitPrice: 35000,
-          unitCost: 28000,
-          totalSale: 35000,
-        },
-      ]
-      setSalesItems(defaultSales)
-      localStorage.setItem("inventory-sales", JSON.stringify(defaultSales))
-    }
-  }, [])
+  const addNewPending = async () => {
+    // No need to fetch user_id for insertion anymore
+    // const { data: userData, error: userError } = await supabase.auth.getUser()
+    // if (userError || !userData?.user) {
+    //   console.error("Error getting user for new pending item:", userError?.message)
+    //   return
+    // }
+    // const userId = userData.user.id // Removed
 
-  const savePendingToLocalStorage = (items: PendingItem[]) => {
-    localStorage.setItem("inventory-pending", JSON.stringify(items))
-  }
-
-  const saveSalesToLocalStorage = (items: SaleItem[]) => {
-    localStorage.setItem("inventory-sales", JSON.stringify(items))
-  }
-
-  const saveStockToLocalStorage = (items: StockItem[]) => {
-    localStorage.setItem("inventory-stock", JSON.stringify(items))
-  }
-
-  const addNewPending = () => {
     const today = new Date().toISOString().split("T")[0]
-    const newPending: PendingItem = {
-      id: Date.now().toString(),
+    const newPending: Omit<PendingItem, "id" | "created_at"> = {
       date: today,
       product: "",
-      quantitySent: 1,
-      unitPrice: 0,
-      unitCost: 0,
+      quantity_sent: 1,
+      unit_price: 0,
+      unit_cost: 0,
       status: "Pending",
+      // user_id: userId, // Removed
     }
-    const updatedItems = [...pendingItems, newPending]
-    setPendingItems(updatedItems)
-    savePendingToLocalStorage(updatedItems)
-    setEditingId(newPending.id)
-    setEditingItem(newPending)
-    setIsCustomProductSelected(false)
+
+    try {
+      const { data, error } = await supabase.from("pending").insert([newPending]).select().single()
+      if (error) throw error
+      setPendingItems((prev) => [...prev, data as PendingItem])
+      setEditingId(data.id)
+      setEditingItem(data as PendingItem)
+      setIsCustomProductSelected(false)
+    } catch (error: any) {
+      console.error("Error adding new pending item:", error.message)
+      alert("Failed to add new pending item: " + error.message)
+    }
   }
 
   const startEditing = (item: PendingItem) => {
@@ -153,58 +136,101 @@ export default function PendingPage() {
     setIsCustomProductSelected(!isProductInStock)
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (editingItem) {
-      let updatedPendingItems = pendingItems.map((item) => (item.id === editingItem.id ? editingItem : item))
-      let updatedSalesItems = [...salesItems]
-      const updatedStockItems = [...stockItems]
+      // No need to fetch user_id for save edit anymore
+      // const { data: userData, error: userError } = await supabase.auth.getUser()
+      // if (userError || !userData?.user) {
+      //   console.error("Error getting user for save edit:", userError?.message)
+      //   alert("Failed to save: User not authenticated.")
+      //   return
+      // }
+      // const userId = userData.user.id // Removed
 
-      // Check if the item is being marked as Delivered or Shipped
-      if (editingItem.status === "Delivered" || editingItem.status === "Shipped") {
-        // Decrement quantity in stock
-        const stockIndex = updatedStockItems.findIndex((stock) => stock.name === editingItem.product)
-        if (stockIndex !== -1) {
-          updatedStockItems[stockIndex] = {
-            ...updatedStockItems[stockIndex],
-            quantity: updatedStockItems[stockIndex].quantity - editingItem.quantitySent,
-          }
-          alert(`Stock quantity for "${editingItem.product}" updated.`)
-        }
-      }
-
-      if (editingItem.status === "Delivered") {
-        // Create a new SaleItem from the delivered PendingItem
-        const newSale: SaleItem = {
-          id: Date.now().toString(), // New ID for the sale item
-          date: new Date().toISOString().split("T")[0], // Current date for sale
+      try {
+        const updatesPending = {
+          date: editingItem.date,
           product: editingItem.product,
-          quantitySold: editingItem.quantitySent,
-          unitPrice: editingItem.unitPrice,
-          unitCost: editingItem.unitCost,
-          totalSale: editingItem.quantitySent * editingItem.unitPrice,
+          quantity_sent: editingItem.quantity_sent,
+          unit_price: editingItem.unit_price,
+          unit_cost: editingItem.unit_cost,
+          status: editingItem.status,
         }
-        updatedSalesItems = [...salesItems, newSale]
-        // Remove the item from pending
-        updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
-        alert(`Item "${editingItem.product}" marked as Delivered and moved to Sales!`)
-      } else if (editingItem.status === "Cancelled") {
-        // If cancelled, remove from pending without adding to sales or affecting stock (already handled above)
-        updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
-        alert(`Item "${editingItem.product}" has been cancelled and removed from pending.`)
+        // Removed .eq("user_id", userId) filter
+        const { error: updatePendingError } = await supabase
+          .from("pending")
+          .update(updatesPending)
+          .eq("id", editingItem.id)
+        if (updatePendingError) throw updatePendingError
+
+        let updatedPendingItems = pendingItems.map((item) => (item.id === editingItem.id ? editingItem : item))
+        let updatedSalesItems = [...salesItems]
+        let updatedStockItems = [...stockItems]
+
+        if (editingItem.status === "Delivered" || editingItem.status === "Shipped") {
+          const stockItemToUpdate = updatedStockItems.find((stock) => stock.name === editingItem.product)
+          if (stockItemToUpdate) {
+            const newQuantity = stockItemToUpdate.quantity - editingItem.quantity_sent
+            // Removed .eq("user_id", userId) filter
+            const { error: updateStockError } = await supabase
+              .from("stock")
+              .update({ quantity: newQuantity })
+              .eq("id", stockItemToUpdate.id)
+            if (updateStockError) throw updateStockError
+
+            updatedStockItems = updatedStockItems.map((item) =>
+              item.id === stockItemToUpdate.id ? { ...item, quantity: newQuantity } : item,
+            )
+            alert(`Stock quantity for "${editingItem.product}" updated.`)
+          } else {
+            alert(`Warning: Product "${editingItem.product}" not found in stock to decrement quantity.`)
+          }
+        }
+
+        if (editingItem.status === "Delivered") {
+          const newSale: Omit<SaleItem, "id" | "created_at"> = {
+            date: new Date().toISOString().split("T")[0],
+            product: editingItem.product,
+            quantity_sold: editingItem.quantity_sent,
+            unit_price: editingItem.unit_price,
+            unit_cost: editingItem.unit_cost,
+            total_sale: editingItem.quantity_sent * editingItem.unit_price,
+            // user_id: userId, // Removed
+          }
+          const { data: insertedSale, error: insertSaleError } = await supabase
+            .from("sales")
+            .insert([newSale])
+            .select()
+            .single()
+          if (insertSaleError) throw insertSaleError
+          updatedSalesItems = [...salesItems, insertedSale as SaleItem]
+
+          // Removed .eq("user_id", userId) filter
+          const { error: deletePendingError } = await supabase.from("pending").delete().eq("id", editingItem.id)
+          if (deletePendingError) throw deletePendingError
+          updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
+
+          alert(`Item "${editingItem.product}" marked as Delivered and moved to Sales!`)
+        } else if (editingItem.status === "Cancelled") {
+          // Removed .eq("user_id", userId) filter
+          const { error: deletePendingError } = await supabase.from("pending").delete().eq("id", editingItem.id)
+          if (deletePendingError) throw deletePendingError
+          updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
+          alert(`Item "${editingItem.product}" has been cancelled and removed from pending.`)
+        }
+
+        setPendingItems(updatedPendingItems)
+        setSalesItems(updatedSalesItems)
+        setStockItems(updatedStockItems)
+      } catch (error: any) {
+        console.error("Error saving pending item or related updates:", error.message)
+        alert("Failed to save changes: " + error.message)
+      } finally {
+        setEditingId(null)
+        setEditingItem(null)
+        setIsCustomProductSelected(false)
       }
-
-      setPendingItems(updatedPendingItems)
-      savePendingToLocalStorage(updatedPendingItems)
-
-      setSalesItems(updatedSalesItems)
-      saveSalesToLocalStorage(updatedSalesItems)
-
-      setStockItems(updatedStockItems) // Update stock state
-      saveStockToLocalStorage(updatedStockItems) // Save updated stock to local storage
     }
-    setEditingId(null)
-    setEditingItem(null)
-    setIsCustomProductSelected(false)
   }
 
   const cancelEdit = () => {
@@ -213,10 +239,17 @@ export default function PendingPage() {
     setIsCustomProductSelected(false)
   }
 
-  const deleteItem = (id: string) => {
-    const updatedItems = pendingItems.filter((item) => item.id !== id)
-    setPendingItems(updatedItems)
-    savePendingToLocalStorage(updatedItems)
+  const deleteItem = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this pending order?")) return
+
+    try {
+      const { error } = await supabase.from("pending").delete().eq("id", id)
+      if (error) throw error
+      setPendingItems((prev) => prev.filter((item) => item.id !== id))
+    } catch (error: any) {
+      console.error("Error deleting pending item:", error.message)
+      alert("Failed to delete pending item: " + error.message)
+    }
   }
 
   const updateEditingItem = (field: keyof PendingItem, value: string | number) => {
@@ -227,14 +260,14 @@ export default function PendingPage() {
         if (value === "custom") {
           setIsCustomProductSelected(true)
           updatedItem.product = ""
-          updatedItem.unitPrice = 0
-          updatedItem.unitCost = 0
+          updatedItem.unit_price = 0
+          updatedItem.unit_cost = 0
         } else {
           setIsCustomProductSelected(false)
           const selectedStock = stockItems.find((stock) => stock.name === value)
           if (selectedStock) {
-            updatedItem.unitPrice = selectedStock.unitPrice
-            updatedItem.unitCost = selectedStock.unitCost
+            updatedItem.unit_price = selectedStock.unit_price
+            updatedItem.unit_cost = selectedStock.unit_cost
           }
         }
       }
@@ -250,35 +283,55 @@ export default function PendingPage() {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const csvString = e.target?.result as string
           const expectedHeaders: (keyof PendingItem)[] = [
             "id",
             "date",
             "product",
-            "quantitySent",
-            "unitPrice",
-            "unitCost",
+            "quantity_sent",
+            "unit_price",
+            "unit_cost",
             "status",
           ]
           const importedData = importFromCsv<PendingItem>(csvString, expectedHeaders)
           if (importedData.length > 0) {
-            setPendingItems(importedData)
-            savePendingToLocalStorage(importedData)
+            // No need to fetch user_id for upload anymore
+            // const { data: userData, error: userError } = await supabase.auth.getUser()
+            // if (userError || !userData?.user) {
+            //   console.error("Error getting user for upload:", userError?.message)
+            //   alert("Failed to upload: User not authenticated.")
+            //   return
+            // }
+            // const userId = userData.user.id // Removed
+
+            // Removed user_id from itemsToUpsert
+            const itemsToUpsert = importedData.map((item) => ({ ...item }))
+
+            const { error } = await supabase.from("pending").upsert(itemsToUpsert, { onConflict: "id" })
+            if (error) throw error
+
+            // Removed .eq("user_id", userId) filter
+            const { data, error: fetchError } = await supabase.from("pending").select("*")
+            if (fetchError) throw fetchError
+            setPendingItems(data as PendingItem[])
+
             alert("Pending data uploaded successfully!")
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error uploading CSV:", error)
-          alert("Failed to upload CSV. Please check the file format.")
+          alert(
+            "Failed to upload CSV. Please check the file format and ensure you are logged in. Error: " + error.message,
+          )
         }
       }
       reader.readAsText(file)
     }
   }
 
-  const totalPendingValue = pendingItems.reduce((sum, item) => sum + item.quantitySent * item.unitPrice, 0)
-  const totalQuantityPending = pendingItems.reduce((sum, item) => sum + item.quantitySent, 0)
+  const totalPendingValue = pendingItems.reduce((sum, item) => sum + item.quantity_sent * item.unit_price, 0)
+  const totalQuantityPending = pendingItems.reduce((sum, item) => sum + item.quantity_sent, 0)
   const pendingCount = pendingItems.filter((item) => item.status === "Pending").length
   const deliveredCount = pendingItems.filter((item) => item.status === "Delivered").length
 
@@ -295,6 +348,14 @@ export default function PendingPage() {
       default:
         return "text-gray-600 bg-gray-100"
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading pending data...</p>
+      </div>
+    )
   }
 
   return (
@@ -443,12 +504,12 @@ export default function PendingPage() {
                       {editingId === item.id ? (
                         <Input
                           type="number"
-                          value={editingItem?.quantitySent || 0}
-                          onChange={(e) => updateEditingItem("quantitySent", Number.parseInt(e.target.value) || 0)}
+                          value={editingItem?.quantity_sent || 0}
+                          onChange={(e) => updateEditingItem("quantity_sent", Number.parseInt(e.target.value) || 0)}
                           className="w-full"
                         />
                       ) : (
-                        item.quantitySent
+                        item.quantity_sent
                       )}
                     </TableCell>
                     <TableCell>
@@ -456,19 +517,19 @@ export default function PendingPage() {
                         <Input
                           type="number"
                           step="0.01"
-                          value={editingItem?.unitPrice || 0}
-                          onChange={(e) => updateEditingItem("unitPrice", Number.parseFloat(e.target.value) || 0)}
+                          value={editingItem?.unit_price || 0}
+                          onChange={(e) => updateEditingItem("unit_price", Number.parseFloat(e.target.value) || 0)}
                           className="w-full"
                         />
                       ) : (
-                        `NPR ${item.unitPrice.toLocaleString()}`
+                        `NPR ${item.unit_price.toLocaleString()}`
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
                       NPR{" "}
                       {editingId === item.id
-                        ? ((editingItem?.quantitySent || 0) * (editingItem?.unitPrice || 0)).toLocaleString()
-                        : (item.quantitySent * item.unitPrice).toLocaleString()}
+                        ? ((editingItem?.quantity_sent || 0) * (editingItem?.unit_price || 0)).toLocaleString()
+                        : (item.quantity_sent * item.unit_price).toLocaleString()}
                     </TableCell>
                     <TableCell>
                       {editingId === item.id ? (

@@ -1,80 +1,62 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { signIn, signUp } from "@/app/auth/actions"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Loader2 } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useState } from "react";
+import { signIn, signUp } from "@/app/auth/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
-  const [isLoginMode, setIsLoginMode] = useState(true)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState("")
-  const router = useRouter()
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handleSubmit = async (formData: FormData) => {
-    setLoading(true)
-    setMessage("")
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
 
-    const result = isLoginMode ? await signIn(formData) : await signUp(formData)
+    const formData = new FormData(e.currentTarget);
+    const result = isLogin ? await signIn(formData) : await signUp(formData);
 
-    setLoading(false)
-    setMessage(result.message)
-
-    if (result.success && isLoginMode) {
-      router.push("/") // Redirect after successful login
-    }
-  }
+    setLoading(false);
+    setMessage(result.message);
+  };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold">{isLoginMode ? "Login" : "Sign Up"}</CardTitle>
-          <CardDescription>
-            {isLoginMode ? "Access your inventory dashboard" : "Create an account to manage your inventory"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form action={handleSubmit} className="space-y-6">
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required placeholder="you@example.com" />
-            </div>
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" required placeholder="••••••••" />
-            </div>
-            {message && (
-              <p className={`text-sm ${message.includes("success") ? "text-green-500" : "text-red-500"}`}>{message}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isLoginMode ? "Log In" : "Sign Up"}
-            </Button>
-          </form>
-          <div className="mt-6 text-center text-sm">
-            {isLoginMode ? (
-              <>
-                Don't have an account?{" "}
-                <Button variant="link" onClick={() => setIsLoginMode(false)} className="p-0 h-auto">
-                  Sign Up
-                </Button>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <Button variant="link" onClick={() => setIsLoginMode(true)} className="p-0 h-auto">
-                  Log In
-                </Button>
-              </>
-            )}
+    <div className="flex min-h-screen items-center justify-center bg-gray-100">
+      <div className="bg-white p-6 rounded shadow-md w-96">
+        <h1 className="text-xl font-bold mb-4">{isLogin ? "Login" : "Sign Up"}</h1>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label>Email</Label>
+            <Input name="email" type="email" required />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <Label>Password</Label>
+            <Input name="password" type="password" required />
+          </div>
+          {message && (
+            <p className={`text-sm ${message.includes("success") ? "text-green-600" : "text-red-600"}`}>
+              {message}
+            </p>
+          )}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Please wait..." : isLogin ? "Login" : "Sign Up"}
+          </Button>
+        </form>
+        <div className="text-center mt-4">
+          {isLogin ? (
+            <button onClick={() => setIsLogin(false)} className="text-blue-500 text-sm">
+              Don't have an account? Sign Up
+            </button>
+          ) : (
+            <button onClick={() => setIsLogin(true)} className="text-blue-500 text-sm">
+              Already have an account? Login
+            </button>
+          )}
+        </div>
+      </div>
     </div>
-  )
+  );
 }

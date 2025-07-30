@@ -4,126 +4,104 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Package, ShoppingCart, Clock, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { getClientSideSupabase } from "@/lib/supabase-browser"
 
 interface StockItem {
   id: string
   name: string
   sku: string
-  unitCost: number
-  unitPrice: number
+  unit_cost: number
+  unit_price: number
   quantity: number
+  category: string
+  // user_id: string // Removed
+  created_at: string
 }
 
 interface SaleItem {
   id: string
   date: string
   product: string
-  quantitySold: number
-  unitPrice: number
-  unitCost: number // Added unitCost to SaleItem
-  totalSale: number
+  quantity_sold: number
+  unit_price: number
+  unit_cost: number
+  total_sale: number
+  // user_id: string // Removed
+  created_at: string
 }
 
 interface PendingItem {
   id: string
   date: string
   product: string
-  quantitySent: number
-  unitPrice: number
-  unitCost: number // Added unitCost to PendingItem
+  quantity_sent: number
+  unit_price: number
+  unit_cost: number
   status: string
+  // user_id: string // Removed
+  created_at: string
 }
 
 export default function Dashboard() {
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [salesItems, setSalesItems] = useState<SaleItem[]>([])
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const supabase = getClientSideSupabase()
 
   useEffect(() => {
-    // Load data from localStorage
-    const savedStock = localStorage.getItem("inventory-stock")
-    const savedSales = localStorage.getItem("inventory-sales")
-    const savedPending = localStorage.getItem("inventory-pending")
+    const fetchData = async () => {
+      setLoading(true)
+      // No need to fetch user_id for filtering anymore
+      // const { data: userData, error: userError } = await supabase.auth.getUser()
+      // if (userError || !userData?.user) {
+      //   console.error("Error fetching user:", userError?.message)
+      //   setLoading(false)
+      //   return
+      // }
+      // const userId = userData.user.id // Removed
 
-    if (savedStock) {
-      setStockItems(JSON.parse(savedStock))
-    } else {
-      // Default data
-      const defaultStock = [
-        { id: "1", name: "Samsung Galaxy A54", sku: "SGH-A54", unitCost: 45000, unitPrice: 52000, quantity: 25 },
-        { id: "2", name: "iPhone 13", sku: "APL-IP13", unitCost: 95000, unitPrice: 110000, quantity: 15 },
-        { id: "3", name: "Sony WH-1000XM4", sku: "SNY-WH4", unitCost: 28000, unitPrice: 35000, quantity: 40 },
-        { id: "4", name: "MacBook Air M2", sku: "APL-MBA2", unitCost: 125000, unitPrice: 145000, quantity: 8 },
-      ]
-      setStockItems(defaultStock)
-      localStorage.setItem("inventory-stock", JSON.stringify(defaultStock))
+      try {
+        // Removed .eq("user_id", userId) filter
+        const { data: stockData, error: stockError } = await supabase.from("stock").select("*")
+        if (stockError) throw stockError
+        setStockItems(stockData as StockItem[])
+
+        // Removed .eq("user_id", userId) filter
+        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
+        if (salesError) throw salesError
+        setSalesItems(salesData as SaleItem[])
+
+        // Removed .eq("user_id", userId) filter
+        const { data: pendingData, error: pendingError } = await supabase.from("pending").select("*")
+        if (pendingError) throw pendingError
+        setPendingItems(pendingData as PendingItem[])
+      } catch (error: any) {
+        console.error("Error fetching dashboard data:", error.message)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (savedSales) {
-      setSalesItems(JSON.parse(savedSales))
-    } else {
-      const defaultSales = [
-        {
-          id: "1",
-          date: "2025-07-30",
-          product: "Samsung Galaxy A54",
-          quantitySold: 2,
-          unitPrice: 52000,
-          unitCost: 45000, // Added default unitCost
-          totalSale: 104000,
-        },
-        {
-          id: "2",
-          date: "2025-07-29",
-          product: "Sony WH-1000XM4",
-          quantitySold: 1,
-          unitPrice: 35000,
-          unitCost: 28000, // Added default unitCost
-          totalSale: 35000,
-        },
-      ]
-      setSalesItems(defaultSales)
-      localStorage.setItem("inventory-sales", JSON.stringify(defaultSales))
-    }
+    fetchData()
+  }, [supabase])
 
-    if (savedPending) {
-      setPendingItems(JSON.parse(savedPending))
-    } else {
-      const defaultPending = [
-        {
-          id: "1",
-          date: "2025-07-30",
-          product: "iPhone 13",
-          quantitySent: 1,
-          unitPrice: 110000,
-          unitCost: 95000,
-          status: "Pending",
-        },
-        {
-          id: "2",
-          date: "2025-07-29",
-          product: "MacBook Air M2",
-          quantitySent: 1,
-          unitPrice: 145000,
-          unitCost: 125000,
-          status: "Shipped",
-        },
-      ]
-      setPendingItems(defaultPending)
-      localStorage.setItem("inventory-pending", JSON.stringify(defaultPending))
-    }
-  }, [])
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading dashboard data...</p>
+      </div>
+    )
+  }
 
-  const totalStockValue = stockItems.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
-  const totalSalesValue = salesItems.reduce((sum, item) => sum + item.totalSale, 0)
-  const totalCostOfSales = salesItems.reduce((sum, item) => sum + item.unitCost * item.quantitySold, 0) // Calculate total cost of goods sold
-  const totalPendingValue = pendingItems.reduce((sum, item) => sum + item.quantitySent * item.unitPrice, 0)
+  const totalStockValue = stockItems.reduce((sum, item) => sum + item.unit_cost * item.quantity, 0)
+  const totalSalesValue = salesItems.reduce((sum, item) => sum + item.total_sale, 0)
+  const totalCostOfSales = salesItems.reduce((sum, item) => sum + item.unit_cost * item.quantity_sold, 0)
+  const totalPendingValue = pendingItems.reduce((sum, item) => sum + item.quantity_sent * item.unit_price, 0)
   const totalItems = stockItems.reduce((sum, item) => sum + item.quantity, 0)
 
   const profitMargin =
-    totalSalesValue === 0
-      ? "0.0" // Display "0.0" if no sales to avoid NaN
-      : (((totalSalesValue - totalCostOfSales) / totalSalesValue) * 100).toFixed(1)
+    totalSalesValue === 0 ? "0.0" : (((totalSalesValue - totalCostOfSales) / totalSalesValue) * 100).toFixed(1)
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">

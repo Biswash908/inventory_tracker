@@ -10,25 +10,30 @@ import { Plus, Edit2, Trash2, Save, X, Download, Upload } from "lucide-react"
 import { useEffect, useState, useRef } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { exportToCsv, importFromCsv } from "@/lib/csv"
+import { getClientSideSupabase } from "@/lib/supabase-browser"
 
 interface SaleItem {
   id: string
   date: string
   product: string
-  quantitySold: number
-  unitPrice: number
-  unitCost: number
-  totalSale: number
+  quantity_sold: number
+  unit_price: number
+  unit_cost: number
+  total_sale: number
+  // user_id: string // Removed
+  created_at: string
 }
 
 interface PendingItem {
   id: string
   date: string
   product: string
-  quantitySent: number
-  unitPrice: number
-  unitCost: number
+  quantity_sent: number
+  unit_price: number
+  unit_cost: number
   status: string
+  // user_id: string // Removed
+  created_at: string
 }
 
 export default function SalesPage() {
@@ -37,65 +42,73 @@ export default function SalesPage() {
   const [editingItem, setEditingItem] = useState<SaleItem | null>(null)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
   const [isCustomProductSelected, setIsCustomProductSelected] = useState(false)
+  const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const supabase = getClientSideSupabase()
 
   useEffect(() => {
-    const savedSales = localStorage.getItem("inventory-sales")
-    const savedPending = localStorage.getItem("inventory-pending")
+    const fetchSalesAndPending = async () => {
+      setLoading(true)
+      // No need to fetch user_id for filtering anymore
+      // const { data: userData, error: userError } = await supabase.auth.getUser()
+      // if (userError || !userData?.user) {
+      //   console.error("Error fetching user:", userError?.message)
+      //   setLoading(false)
+      //   return
+      // }
+      // const userId = userData.user.id // Removed
 
-    if (savedPending) {
-      setPendingItems(JSON.parse(savedPending))
+      try {
+        // Removed .eq("user_id", userId) filter
+        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
+        if (salesError) throw salesError
+        setSalesItems(salesData as SaleItem[])
+
+        // Removed .eq("user_id", userId) filter
+        const { data: pendingData, error: pendingError } = await supabase.from("pending").select("*")
+        if (pendingError) throw pendingError
+        setPendingItems(pendingData as PendingItem[])
+      } catch (error: any) {
+        console.error("Error fetching sales/pending data:", error.message)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (savedSales) {
-      setSalesItems(JSON.parse(savedSales))
-    } else {
-      const defaultSales = [
-        {
-          id: "1",
-          date: "2025-07-30",
-          product: "Samsung Galaxy A54",
-          quantitySold: 2,
-          unitPrice: 52000,
-          unitCost: 45000,
-          totalSale: 104000,
-        },
-        {
-          id: "2",
-          date: "2025-07-29",
-          product: "Sony WH-1000XM4",
-          quantitySold: 1,
-          unitPrice: 35000,
-          unitCost: 28000,
-          totalSale: 35000,
-        },
-      ]
-      setSalesItems(defaultSales)
-      localStorage.setItem("inventory-sales", JSON.stringify(defaultSales))
-    }
-  }, [])
+    fetchSalesAndPending()
+  }, [supabase])
 
-  const saveToLocalStorage = (items: SaleItem[]) => {
-    localStorage.setItem("inventory-sales", JSON.stringify(items))
-  }
+  const addNewSale = async () => {
+    // No need to fetch user_id for insertion anymore
+    // const { data: userData, error: userError } = await supabase.auth.getUser()
+    // if (userError || !userData?.user) {
+    //   console.error("Error getting user for new sale:", userError?.message)
+    //   return
+    // }
+    // const userId = userData.user.id // Removed
 
-  const addNewSale = () => {
     const today = new Date().toISOString().split("T")[0]
-    const newSale: SaleItem = {
-      id: Date.now().toString(),
+    const newSale: Omit<SaleItem, "id" | "created_at"> = {
       date: today,
       product: "",
-      quantitySold: 1,
-      unitPrice: 0,
-      unitCost: 0,
-      totalSale: 0,
+      quantity_sold: 1,
+      unit_price: 0,
+      unit_cost: 0,
+      total_sale: 0,
+      // user_id: userId, // Removed
     }
-    const updatedItems = [...salesItems, newSale]
-    setSalesItems(updatedItems)
-    saveToLocalStorage(updatedItems)
-    setEditingId(newSale.id)
-    setEditingItem(newSale)
-    setIsCustomProductSelected(false)
+
+    try {
+      const { data, error } = await supabase.from("sales").insert([newSale]).select().single()
+      if (error) throw error
+      setSalesItems((prev) => [...prev, data as SaleItem])
+      setEditingId(data.id)
+      setEditingItem(data as SaleItem)
+      setIsCustomProductSelected(false)
+    } catch (error: any) {
+      console.error("Error adding new sale:", error.message)
+      alert("Failed to add new sale: " + error.message)
+    }
   }
 
   const startEditing = (item: SaleItem) => {
@@ -105,19 +118,32 @@ export default function SalesPage() {
     setIsCustomProductSelected(!isProductInPending)
   }
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (editingItem) {
       const updatedItem = {
         ...editingItem,
-        totalSale: editingItem.quantitySold * editingItem.unitPrice,
+        total_sale: editingItem.quantity_sold * editingItem.unit_price,
       }
-      const updatedItems = salesItems.map((item) => (item.id === updatedItem.id ? updatedItem : item))
-      setSalesItems(updatedItems)
-      saveToLocalStorage(updatedItems)
+      try {
+        const updates = {
+          date: updatedItem.date,
+          product: updatedItem.product,
+          quantity_sold: updatedItem.quantity_sold,
+          unit_price: updatedItem.unit_price,
+          unit_cost: updatedItem.unit_cost,
+          total_sale: updatedItem.total_sale,
+        }
+        const { error } = await supabase.from("sales").update(updates).eq("id", updatedItem.id)
+        if (error) throw error
+        setSalesItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)))
+        setEditingId(null)
+        setEditingItem(null)
+        setIsCustomProductSelected(false)
+      } catch (error: any) {
+        console.error("Error saving sale:", error.message)
+        alert("Failed to save sale: " + error.message)
+      }
     }
-    setEditingId(null)
-    setEditingItem(null)
-    setIsCustomProductSelected(false)
   }
 
   const cancelEdit = () => {
@@ -126,10 +152,17 @@ export default function SalesPage() {
     setIsCustomProductSelected(false)
   }
 
-  const deleteItem = (id: string) => {
-    const updatedItems = salesItems.filter((item) => item.id !== id)
-    setSalesItems(updatedItems)
-    saveToLocalStorage(updatedItems)
+  const deleteItem = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this sale record?")) return
+
+    try {
+      const { error } = await supabase.from("sales").delete().eq("id", id)
+      if (error) throw error
+      setSalesItems((prev) => prev.filter((item) => item.id !== id))
+    } catch (error: any) {
+      console.error("Error deleting sale:", error.message)
+      alert("Failed to delete sale: " + error.message)
+    }
   }
 
   const updateEditingItem = (field: keyof SaleItem, value: string | number) => {
@@ -140,20 +173,20 @@ export default function SalesPage() {
         if (value === "custom") {
           setIsCustomProductSelected(true)
           updatedItem.product = ""
-          updatedItem.unitPrice = 0
-          updatedItem.unitCost = 0
+          updatedItem.unit_price = 0
+          updatedItem.unit_cost = 0
         } else {
           setIsCustomProductSelected(false)
           const selectedPending = pendingItems.find((pending) => pending.product === value)
           if (selectedPending) {
-            updatedItem.unitPrice = selectedPending.unitPrice
-            updatedItem.unitCost = selectedPending.unitCost
+            updatedItem.unit_price = selectedPending.unit_price
+            updatedItem.unit_cost = selectedPending.unit_cost
           }
         }
       }
 
-      if (field === "quantitySold" || field === "unitPrice") {
-        updatedItem.totalSale = updatedItem.quantitySold * updatedItem.unitPrice
+      if (field === "quantity_sold" || field === "unit_price") {
+        updatedItem.total_sale = updatedItem.quantity_sold * updatedItem.unit_price
       }
       setEditingItem(updatedItem)
     }
@@ -167,36 +200,64 @@ export default function SalesPage() {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const csvString = e.target?.result as string
           const expectedHeaders: (keyof SaleItem)[] = [
             "id",
             "date",
             "product",
-            "quantitySold",
-            "unitPrice",
-            "unitCost",
-            "totalSale",
+            "quantity_sold",
+            "unit_price",
+            "unit_cost",
+            "total_sale",
           ]
           const importedData = importFromCsv<SaleItem>(csvString, expectedHeaders)
           if (importedData.length > 0) {
-            setSalesItems(importedData)
-            saveToLocalStorage(importedData)
+            // No need to fetch user_id for upload anymore
+            // const { data: userData, error: userError } = await supabase.auth.getUser()
+            // if (userError || !userData?.user) {
+            //   console.error("Error getting user for upload:", userError?.message)
+            //   alert("Failed to upload: User not authenticated.")
+            //   return
+            // }
+            // const userId = userData.user.id // Removed
+
+            // Removed user_id from itemsToUpsert
+            const itemsToUpsert = importedData.map((item) => ({ ...item }))
+
+            const { error } = await supabase.from("sales").upsert(itemsToUpsert, { onConflict: "id" })
+            if (error) throw error
+
+            // Removed .eq("user_id", userId) filter
+            const { data, error: fetchError } = await supabase.from("sales").select("*")
+            if (fetchError) throw fetchError
+            setSalesItems(data as SaleItem[])
+
             alert("Sales data uploaded successfully!")
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error uploading CSV:", error)
-          alert("Failed to upload CSV. Please check the file format.")
+          alert(
+            "Failed to upload CSV. Please check the file format and ensure you are logged in. Error: " + error.message,
+          )
         }
       }
       reader.readAsText(file)
     }
   }
 
-  const totalSalesValue = salesItems.reduce((sum, item) => sum + item.totalSale, 0)
-  const totalQuantitySold = salesItems.reduce((sum, item) => sum + item.quantitySold, 0)
+  const totalSalesValue = salesItems.reduce((sum, item) => sum + item.total_sale, 0)
+  const totalQuantitySold = salesItems.reduce((sum, item) => sum + item.quantity_sold, 0)
   const averageSaleValue = salesItems.length > 0 ? totalSalesValue / salesItems.length : 0
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p>Loading sales data...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -315,10 +376,10 @@ export default function SalesPage() {
                             </SelectTrigger>
                             <SelectContent>
                               {pendingItems
-                                .filter((pending) => pending.status !== "Delivered" && pending.quantitySent > 0)
+                                .filter((pending) => pending.status !== "Delivered" && pending.quantity_sent > 0)
                                 .map((pending) => (
                                   <SelectItem key={pending.id} value={pending.product}>
-                                    {pending.product} (Qty: {pending.quantitySent})
+                                    {pending.product} (Qty: {pending.quantity_sent})
                                   </SelectItem>
                                 ))}
                               <SelectItem value="custom">Custom Product</SelectItem>
@@ -333,12 +394,12 @@ export default function SalesPage() {
                       {editingId === item.id ? (
                         <Input
                           type="number"
-                          value={editingItem?.quantitySold || 0}
-                          onChange={(e) => updateEditingItem("quantitySold", Number.parseInt(e.target.value) || 0)}
+                          value={editingItem?.quantity_sold || 0}
+                          onChange={(e) => updateEditingItem("quantity_sold", Number.parseInt(e.target.value) || 0)}
                           className="w-full"
                         />
                       ) : (
-                        item.quantitySold
+                        item.quantity_sold
                       )}
                     </TableCell>
                     <TableCell>
@@ -346,19 +407,19 @@ export default function SalesPage() {
                         <Input
                           type="number"
                           step="0.01"
-                          value={editingItem?.unitPrice || 0}
-                          onChange={(e) => updateEditingItem("unitPrice", Number.parseFloat(e.target.value) || 0)}
+                          value={editingItem?.unit_price || 0}
+                          onChange={(e) => updateEditingItem("unit_price", Number.parseFloat(e.target.value) || 0)}
                           className="w-full"
                         />
                       ) : (
-                        `NPR ${item.unitPrice.toLocaleString()}`
+                        `NPR ${item.unit_price.toLocaleString()}`
                       )}
                     </TableCell>
                     <TableCell className="font-medium text-green-600">
                       NPR{" "}
                       {editingId === item.id
-                        ? (editingItem?.totalSale || 0).toLocaleString()
-                        : item.totalSale.toLocaleString()}
+                        ? (editingItem?.total_sale || 0).toLocaleString()
+                        : item.total_sale.toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
