@@ -1,13 +1,15 @@
 "use client"
 
+import type React from "react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit2, Trash2, Save, X, Package } from "lucide-react"
-import Link from "next/link"
-import { useEffect, useState } from "react"
+import { Plus, Edit2, Trash2, Save, X, Download, Upload } from "lucide-react"
+import { useEffect, useState, useRef } from "react"
+import { exportToCsv, importFromCsv } from "@/lib/csv"
 
 interface PendingItem {
   id: string
@@ -15,37 +17,114 @@ interface PendingItem {
   product: string
   quantitySent: number
   unitPrice: number
+  unitCost: number
   status: string
 }
 
+interface StockItem {
+  id: string
+  name: string
+  sku: string
+  unitCost: number
+  unitPrice: number
+  quantity: number
+}
+
+// Define SaleItem interface here for use in this file
+interface SaleItem {
+  id: string
+  date: string
+  product: string
+  quantitySold: number
+  unitPrice: number
+  unitCost: number
+  totalSale: number
+}
+
 export default function PendingPage() {
-  const [pendingItems, set_pendingItems] = useState<PendingItem[]>([])
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<PendingItem | null>(null)
+  const [stockItems, setStockItems] = useState<StockItem[]>([])
+  const [salesItems, setSalesItems] = useState<SaleItem[]>([]) // State to manage sales data
+  const [isCustomProductSelected, setIsCustomProductSelected] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const savedPending = localStorage.getItem("inventory-pending")
+    const savedStock = localStorage.getItem("inventory-stock")
+    const savedSales = localStorage.getItem("inventory-sales") // Load sales data
+
+    if (savedStock) {
+      setStockItems(JSON.parse(savedStock))
+    }
+
     if (savedPending) {
-      set_pendingItems(JSON.parse(savedPending))
+      setPendingItems(JSON.parse(savedPending))
     } else {
       const defaultPending = [
-        { id: "1", date: "2025-07-30", product: "iPhone 13", quantitySent: 1, unitPrice: 110000, status: "Pending" },
+        {
+          id: "1",
+          date: "2025-07-30",
+          product: "iPhone 13",
+          quantitySent: 1,
+          unitPrice: 110000,
+          unitCost: 95000,
+          status: "Pending",
+        },
         {
           id: "2",
           date: "2025-07-29",
           product: "MacBook Air M2",
           quantitySent: 1,
           unitPrice: 145000,
+          unitCost: 125000,
           status: "Shipped",
         },
       ]
-      set_pendingItems(defaultPending)
+      setPendingItems(defaultPending)
       localStorage.setItem("inventory-pending", JSON.stringify(defaultPending))
+    }
+
+    if (savedSales) {
+      setSalesItems(JSON.parse(savedSales))
+    } else {
+      // Initialize with default sales if none exist
+      const defaultSales = [
+        {
+          id: "1",
+          date: "2025-07-30",
+          product: "Samsung Galaxy A54",
+          quantitySold: 2,
+          unitPrice: 52000,
+          unitCost: 45000,
+          totalSale: 104000,
+        },
+        {
+          id: "2",
+          date: "2025-07-29",
+          product: "Sony WH-1000XM4",
+          quantitySold: 1,
+          unitPrice: 35000,
+          unitCost: 28000,
+          totalSale: 35000,
+        },
+      ]
+      setSalesItems(defaultSales)
+      localStorage.setItem("inventory-sales", JSON.stringify(defaultSales))
     }
   }, [])
 
-  const saveToLocalStorage = (items: PendingItem[]) => {
+  const savePendingToLocalStorage = (items: PendingItem[]) => {
     localStorage.setItem("inventory-pending", JSON.stringify(items))
+  }
+
+  const saveSalesToLocalStorage = (items: SaleItem[]) => {
+    localStorage.setItem("inventory-sales", JSON.stringify(items))
+  }
+
+  const saveStockToLocalStorage = (items: StockItem[]) => {
+    localStorage.setItem("inventory-stock", JSON.stringify(items))
   }
 
   const addNewPending = () => {
@@ -53,47 +132,148 @@ export default function PendingPage() {
     const newPending: PendingItem = {
       id: Date.now().toString(),
       date: today,
-      product: "Electronics Item",
+      product: "",
       quantitySent: 1,
       unitPrice: 0,
+      unitCost: 0,
       status: "Pending",
     }
     const updatedItems = [...pendingItems, newPending]
-    set_pendingItems(updatedItems)
-    saveToLocalStorage(updatedItems)
+    setPendingItems(updatedItems)
+    savePendingToLocalStorage(updatedItems)
     setEditingId(newPending.id)
     setEditingItem(newPending)
+    setIsCustomProductSelected(false)
   }
 
   const startEditing = (item: PendingItem) => {
     setEditingId(item.id)
     setEditingItem({ ...item })
+    const isProductInStock = stockItems.some((stock) => stock.name === item.product)
+    setIsCustomProductSelected(!isProductInStock)
   }
 
   const saveEdit = () => {
     if (editingItem) {
-      const updatedItems = pendingItems.map((item) => (item.id === editingItem.id ? editingItem : item))
-      set_pendingItems(updatedItems)
-      saveToLocalStorage(updatedItems)
+      let updatedPendingItems = pendingItems.map((item) => (item.id === editingItem.id ? editingItem : item))
+      let updatedSalesItems = [...salesItems]
+      const updatedStockItems = [...stockItems]
+
+      // Check if the item is being marked as Delivered or Shipped
+      if (editingItem.status === "Delivered" || editingItem.status === "Shipped") {
+        // Decrement quantity in stock
+        const stockIndex = updatedStockItems.findIndex((stock) => stock.name === editingItem.product)
+        if (stockIndex !== -1) {
+          updatedStockItems[stockIndex] = {
+            ...updatedStockItems[stockIndex],
+            quantity: updatedStockItems[stockIndex].quantity - editingItem.quantitySent,
+          }
+          alert(`Stock quantity for "${editingItem.product}" updated.`)
+        }
+      }
+
+      if (editingItem.status === "Delivered") {
+        // Create a new SaleItem from the delivered PendingItem
+        const newSale: SaleItem = {
+          id: Date.now().toString(), // New ID for the sale item
+          date: new Date().toISOString().split("T")[0], // Current date for sale
+          product: editingItem.product,
+          quantitySold: editingItem.quantitySent,
+          unitPrice: editingItem.unitPrice,
+          unitCost: editingItem.unitCost,
+          totalSale: editingItem.quantitySent * editingItem.unitPrice,
+        }
+        updatedSalesItems = [...salesItems, newSale]
+        // Remove the item from pending
+        updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
+        alert(`Item "${editingItem.product}" marked as Delivered and moved to Sales!`)
+      } else if (editingItem.status === "Cancelled") {
+        // If cancelled, remove from pending without adding to sales or affecting stock (already handled above)
+        updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
+        alert(`Item "${editingItem.product}" has been cancelled and removed from pending.`)
+      }
+
+      setPendingItems(updatedPendingItems)
+      savePendingToLocalStorage(updatedPendingItems)
+
+      setSalesItems(updatedSalesItems)
+      saveSalesToLocalStorage(updatedSalesItems)
+
+      setStockItems(updatedStockItems) // Update stock state
+      saveStockToLocalStorage(updatedStockItems) // Save updated stock to local storage
     }
     setEditingId(null)
     setEditingItem(null)
+    setIsCustomProductSelected(false)
   }
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditingItem(null)
+    setIsCustomProductSelected(false)
   }
 
   const deleteItem = (id: string) => {
     const updatedItems = pendingItems.filter((item) => item.id !== id)
-    set_pendingItems(updatedItems)
-    saveToLocalStorage(updatedItems)
+    setPendingItems(updatedItems)
+    savePendingToLocalStorage(updatedItems)
   }
 
   const updateEditingItem = (field: keyof PendingItem, value: string | number) => {
     if (editingItem) {
-      setEditingItem({ ...editingItem, [field]: value })
+      const updatedItem = { ...editingItem, [field]: value }
+
+      if (field === "product") {
+        if (value === "custom") {
+          setIsCustomProductSelected(true)
+          updatedItem.product = ""
+          updatedItem.unitPrice = 0
+          updatedItem.unitCost = 0
+        } else {
+          setIsCustomProductSelected(false)
+          const selectedStock = stockItems.find((stock) => stock.name === value)
+          if (selectedStock) {
+            updatedItem.unitPrice = selectedStock.unitPrice
+            updatedItem.unitCost = selectedStock.unitCost
+          }
+        }
+      }
+      setEditingItem(updatedItem)
+    }
+  }
+
+  const handleDownloadPending = () => {
+    exportToCsv(pendingItems, "electronics_pending.csv")
+  }
+
+  const handleUploadPending = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const csvString = e.target?.result as string
+          const expectedHeaders: (keyof PendingItem)[] = [
+            "id",
+            "date",
+            "product",
+            "quantitySent",
+            "unitPrice",
+            "unitCost",
+            "status",
+          ]
+          const importedData = importFromCsv<PendingItem>(csvString, expectedHeaders)
+          if (importedData.length > 0) {
+            setPendingItems(importedData)
+            savePendingToLocalStorage(importedData)
+            alert("Pending data uploaded successfully!")
+          }
+        } catch (error) {
+          console.error("Error uploading CSV:", error)
+          alert("Failed to upload CSV. Please check the file format.")
+        }
+      }
+      reader.readAsText(file)
     }
   }
 
@@ -119,31 +299,6 @@ export default function PendingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-100">
-      <nav className="bg-white shadow-lg border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Package className="h-8 w-8 text-indigo-600 mr-3" />
-              <span className="text-xl font-bold text-gray-900">Inventory Dashboard</span>
-            </div>
-            <div className="flex items-center space-x-8">
-              <Link href="/" className="text-gray-500 hover:text-gray-700 font-medium">
-                Home
-              </Link>
-              <Link href="/stock" className="text-gray-500 hover:text-gray-700 font-medium">
-                Stock
-              </Link>
-              <Link href="/sales" className="text-gray-500 hover:text-gray-700 font-medium">
-                Sales
-              </Link>
-              <Link href="/pending" className="text-indigo-600 font-medium border-b-2 border-indigo-600 pb-1">
-                Pending
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Electronics Delivery Tracking</h1>
@@ -195,10 +350,21 @@ export default function PendingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Delivery Tracking</CardTitle>
-            <Button onClick={addNewPending} className="bg-orange-600 hover:bg-orange-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Order
-            </Button>
+            <div className="flex items-center space-x-4">
+              <Button onClick={addNewPending} className="bg-orange-600 hover:bg-orange-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Order
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownloadPending}>
+                <Download className="h-4 w-4 mr-2" />
+                Download CSV
+              </Button>
+              <Input type="file" accept=".csv" onChange={handleUploadPending} className="hidden" ref={fileInputRef} />
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-2" />
+                Upload CSV
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -231,11 +397,45 @@ export default function PendingPage() {
                       </TableCell>
                       <TableCell>
                         {editingId === item.id ? (
-                          <Input
-                            value={editingItem?.product || ""}
-                            onChange={(e) => updateEditingItem("product", e.target.value)}
-                            className="w-full"
-                          />
+                          isCustomProductSelected ? (
+                            <div className="flex flex-col gap-2">
+                              <Input
+                                value={editingItem?.product || ""}
+                                onChange={(e) => updateEditingItem("product", e.target.value)}
+                                className="w-full"
+                                placeholder="Enter custom product name"
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setIsCustomProductSelected(false)
+                                  if (editingItem) setEditingItem({ ...editingItem, product: "" })
+                                }}
+                              >
+                                Select from Stock
+                              </Button>
+                            </div>
+                          ) : (
+                            <Select
+                              value={editingItem?.product || ""}
+                              onValueChange={(value) => updateEditingItem("product", value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select product from stock" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {stockItems
+                                  .filter((stock) => stock.quantity > 0)
+                                  .map((stock) => (
+                                    <SelectItem key={stock.id} value={stock.name}>
+                                      {stock.name} (Available: {stock.quantity})
+                                    </SelectItem>
+                                  ))}
+                                <SelectItem value="custom">Custom Product</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )
                         ) : (
                           item.product
                         )}
@@ -266,7 +466,7 @@ export default function PendingPage() {
                         )}
                       </TableCell>
                       <TableCell className="font-medium">
-                        NPR
+                        NPR{" "}
                         {editingId === item.id
                           ? ((editingItem?.quantitySent || 0) * (editingItem?.unitPrice || 0)).toLocaleString()
                           : (item.quantitySent * item.unitPrice).toLocaleString()}
