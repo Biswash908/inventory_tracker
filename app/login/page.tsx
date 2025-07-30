@@ -17,7 +17,7 @@ export default function LoginPage() {
     setMessage("");
 
     const formData = new FormData(e.currentTarget);
-    const result = isLogin ? await signIn(formData) : await signUp(formData);
+    const result = await signIn(formData);
 
     setLoading(false);
     setMessage(result.message);
