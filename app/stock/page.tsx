@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import type React from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,7 +30,6 @@ interface StockItem {
   unit_price: number
   quantity: number
   category: string
-  // user_id: string // Removed
   created_at: string
 }
 
@@ -44,6 +43,9 @@ export default function StockPage() {
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = getClientSideSupabase()
+
+  // State for sorting
+  const [currentSortOption, setCurrentSortOption] = useState<string>("name_asc") // Default sort by Product Name (A-Z)
 
   useEffect(() => {
     const fetchStockItems = async () => {
@@ -255,26 +257,53 @@ export default function StockPage() {
     return stockItems.filter((item) => item.category === selectedCategoryFilter)
   }, [stockItems, selectedCategoryFilter])
 
-  // Group and sort filtered stock items
-  const groupedAndSortedStockItems = useMemo(() => {
-    const grouped: { [key: string]: StockItem[] } = {}
-    filteredStockItems.forEach((item) => {
-      const category = item.category || "Uncategorized"
-      if (!grouped[category]) {
-        grouped[category] = []
-      }
-      grouped[category].push(item)
-    })
+  // Prepare items for display based on sorting option
+  const sortedDisplayItems = useMemo(() => {
+    const itemsToSort = [...filteredStockItems]
+    const [key, direction] = currentSortOption.split("_")
+    const sortDirection = direction as "asc" | "desc"
+    const sortKey = key as keyof StockItem | "category"
 
-    const sortedCategories = Object.keys(grouped).sort((a, b) => a.localeCompare(b))
+    if (sortKey === "category") {
+      // Group by category, then sort categories, then sort items within category by name
+      const grouped: { [key: string]: StockItem[] } = {}
+      itemsToSort.forEach((item) => {
+        const category = item.category || "Uncategorized"
+        if (!grouped[category]) {
+          grouped[category] = []
+        }
+        grouped[category].push(item)
+      })
 
-    const result: { category: string; items: StockItem[] }[] = []
-    sortedCategories.forEach((category) => {
-      const sortedItems = grouped[category].sort((a, b) => a.name.localeCompare(b.name))
-      result.push({ category, items: sortedItems })
-    })
-    return result
-  }, [filteredStockItems])
+      const sortedCategories = Object.keys(grouped).sort((a, b) => {
+        if (sortDirection === "asc") return a.localeCompare(b)
+        return b.localeCompare(a)
+      })
+
+      const result: { type: "category-header" | "item"; data: string | StockItem }[] = []
+      sortedCategories.forEach((category) => {
+        result.push({ type: "category-header", data: category })
+        // Always sort by name within category for consistency when grouped
+        const sortedItems = grouped[category].sort((a, b) => a.name.localeCompare(b.name))
+        sortedItems.forEach((item) => result.push({ type: "item", data: item }))
+      })
+      return result
+    } else {
+      // Standard flat list sorting by selected key
+      itemsToSort.sort((a, b) => {
+        const valA: any = a[sortKey]
+        const valB: any = b[sortKey]
+
+        // Handle string comparison for 'name', 'sku', 'category'
+        if (typeof valA === "string" && typeof valB === "string") {
+          return sortDirection === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA)
+        }
+        // Handle numeric comparison for other fields
+        return sortDirection === "asc" ? valA - valB : valB - valA
+      })
+      return itemsToSort.map((item) => ({ type: "item", data: item }))
+    }
+  }, [filteredStockItems, currentSortOption])
 
   if (loading) {
     return (
@@ -340,6 +369,26 @@ export default function StockPage() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* New Sort By Select */}
+            <Select value={currentSortOption} onValueChange={setCurrentSortOption}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Sort By" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name_asc">Product Name (A-Z)</SelectItem>
+                <SelectItem value="name_desc">Product Name (Z-A)</SelectItem>
+                <SelectItem value="category_asc">Category (A-Z)</SelectItem>
+                <SelectItem value="category_desc">Category (Z-A)</SelectItem>
+                <SelectItem value="quantity_asc">Quantity (Low to High)</SelectItem>
+                <SelectItem value="quantity_desc">Quantity (High to Low)</SelectItem>
+                <SelectItem value="unit_cost_asc">Unit Cost (Low to High)</SelectItem>
+                <SelectItem value="unit_cost_desc">Unit Cost (High to Low)</SelectItem>
+                <SelectItem value="unit_price_asc">Unit Price (Low to High)</SelectItem>
+                <SelectItem value="unit_price_desc">Unit Price (High to Low)</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -433,14 +482,18 @@ export default function StockPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groupedAndSortedStockItems.map((group) => (
-                  <React.Fragment key={group.category}>
-                    <TableRow className="bg-gray-50 hover:bg-gray-100">
-                      <TableCell colSpan={8} className="font-semibold text-lg py-3">
-                        {group.category}
-                      </TableCell>
-                    </TableRow>
-                    {group.items.map((item) => (
+                {sortedDisplayItems.map((row, index) => {
+                  if (row.type === "category-header") {
+                    return (
+                      <TableRow key={`category-${row.data}-${index}`} className="bg-gray-50 hover:bg-gray-100">
+                        <TableCell colSpan={8} className="font-semibold text-lg py-3">
+                          {row.data}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  } else {
+                    const item = row.data as StockItem
+                    return (
                       <TableRow key={item.id}>
                         <TableCell>
                           {editingId === item.id ? (
@@ -553,9 +606,9 @@ export default function StockPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </React.Fragment>
-                ))}
+                    )
+                  }
+                })}
               </TableBody>
             </Table>
           </div>
