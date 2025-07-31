@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -48,17 +48,7 @@ export default function StockPage() {
   useEffect(() => {
     const fetchStockItems = async () => {
       setLoading(true)
-      // No need to fetch user_id for filtering anymore
-      // const { data: userData, error: userError } = await supabase.auth.getUser()
-      // if (userError || !userData?.user) {
-      //   console.error("Error fetching user:", userError?.message)
-      //   setLoading(false)
-      //   return
-      // }
-      // const userId = userData.user.id // Removed
-
       try {
-        // Removed .eq("user_id", userId) filter
         const { data, error } = await supabase.from("stock").select("*")
         if (error) throw error
         setStockItems(data as StockItem[])
@@ -105,14 +95,6 @@ export default function StockPage() {
   }
 
   const addNewItem = async () => {
-    // No need to fetch user_id for insertion anymore
-    // const { data: userData, error: userError } = await supabase.auth.getUser()
-    // if (userError || !userData?.user) {
-    //   console.error("Error getting user for new item:", userError?.message)
-    //   return
-    // }
-    // const userId = userData.user.id // Removed
-
     const newItem: Omit<StockItem, "id" | "created_at"> = {
       name: "",
       sku: "",
@@ -120,7 +102,6 @@ export default function StockPage() {
       unit_price: 0,
       quantity: 0,
       category: categories.length > 0 ? categories[0] : "",
-      // user_id: userId, // Removed
     }
 
     try {
@@ -240,22 +221,11 @@ export default function StockPage() {
           ]
           const importedData = importFromCsv<StockItem>(csvString, expectedHeaders)
           if (importedData.length > 0) {
-            // No need to fetch user_id for upload anymore
-            // const { data: userData, error: userError } = await supabase.auth.getUser()
-            // if (userError || !userData?.user) {
-            //   console.error("Error getting user for upload:", userError?.message)
-            //   alert("Failed to upload: User not authenticated.")
-            //   return
-            // }
-            // const userId = userData.user.id // Removed
-
-            // Removed user_id from itemsToUpsert
             const itemsToUpsert = importedData.map((item) => ({ ...item }))
 
             const { error } = await supabase.from("stock").upsert(itemsToUpsert, { onConflict: "id" })
             if (error) throw error
 
-            // Removed .eq("user_id", userId) filter
             const { data, error: fetchError } = await supabase.from("stock").select("*")
             if (fetchError) throw fetchError
             setStockItems(data as StockItem[])
@@ -277,12 +247,34 @@ export default function StockPage() {
   const totalRetailValue = stockItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const totalItems = stockItems.reduce((sum, item) => sum + item.quantity, 0)
 
+  // Filter stock items based on selected category
   const filteredStockItems = useMemo(() => {
     if (selectedCategoryFilter === "All") {
       return stockItems
     }
     return stockItems.filter((item) => item.category === selectedCategoryFilter)
   }, [stockItems, selectedCategoryFilter])
+
+  // Group and sort filtered stock items
+  const groupedAndSortedStockItems = useMemo(() => {
+    const grouped: { [key: string]: StockItem[] } = {}
+    filteredStockItems.forEach((item) => {
+      const category = item.category || "Uncategorized"
+      if (!grouped[category]) {
+        grouped[category] = []
+      }
+      grouped[category].push(item)
+    })
+
+    const sortedCategories = Object.keys(grouped).sort((a, b) => a.localeCompare(b))
+
+    const result: { category: string; items: StockItem[] }[] = []
+    sortedCategories.forEach((category) => {
+      const sortedItems = grouped[category].sort((a, b) => a.name.localeCompare(b.name))
+      result.push({ category, items: sortedItems })
+    })
+    return result
+  }, [filteredStockItems])
 
   if (loading) {
     return (
@@ -441,119 +433,128 @@ export default function StockPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStockItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Input
-                          value={editingItem?.name || ""}
-                          onChange={(e) => updateEditingItem("name", e.target.value)}
-                          className="w-full"
-                          placeholder="Enter product name (e.g., iPhone 15, Samsung TV)"
-                        />
-                      ) : (
-                        item.name
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Select
-                          value={editingItem?.category || ""}
-                          onValueChange={(value) => updateEditingItem("category", value)}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat} value={cat}>
-                                {cat}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        item.category || "N/A"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Input
-                          value={editingItem?.sku || ""}
-                          onChange={(e) => updateEditingItem("sku", e.target.value)}
-                          className="w-full"
-                          placeholder="Auto-generated from name"
-                        />
-                      ) : (
-                        item.sku
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Input
-                          type="number"
-                          value={editingItem?.unit_cost || ""}
-                          onChange={(e) => updateEditingItem("unit_cost", Number.parseFloat(e.target.value) || 0)}
-                          className="w-full"
-                          placeholder="0"
-                        />
-                      ) : (
-                        `NPR ${item.unit_cost.toLocaleString()}`
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Input
-                          type="number"
-                          value={editingItem?.unit_price || ""}
-                          onChange={(e) => updateEditingItem("unit_price", Number.parseFloat(e.target.value) || 0)}
-                          className="w-full"
-                          placeholder="0"
-                        />
-                      ) : (
-                        `NPR ${item.unit_price.toLocaleString()}`
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === item.id ? (
-                        <Input
-                          type="number"
-                          value={editingItem?.quantity || ""}
-                          onChange={(e) => updateEditingItem("quantity", Number.parseInt(e.target.value) || 0)}
-                          className="w-full"
-                          placeholder="0"
-                        />
-                      ) : (
-                        item.quantity
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      NPR {(item.unit_cost * item.quantity).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {editingId === item.id ? (
-                          <>
-                            <Button size="sm" onClick={saveEdit} className="bg-green-600 hover:bg-green-700">
-                              <Save className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={cancelEdit}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button size="sm" variant="outline" onClick={() => startEditing(item)}>
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {groupedAndSortedStockItems.map((group) => (
+                  <React.Fragment key={group.category}>
+                    <TableRow className="bg-gray-50 hover:bg-gray-100">
+                      <TableCell colSpan={8} className="font-semibold text-lg py-3">
+                        {group.category}
+                      </TableCell>
+                    </TableRow>
+                    {group.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Input
+                              value={editingItem?.name || ""}
+                              onChange={(e) => updateEditingItem("name", e.target.value)}
+                              className="w-full"
+                              placeholder="Enter product name (e.g., iPhone 15, Samsung TV)"
+                            />
+                          ) : (
+                            item.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Select
+                              value={editingItem?.category || ""}
+                              onValueChange={(value) => updateEditingItem("category", value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((cat) => (
+                                  <SelectItem key={cat} value={cat}>
+                                    {cat}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            item.category || "N/A"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Input
+                              value={editingItem?.sku || ""}
+                              onChange={(e) => updateEditingItem("sku", e.target.value)}
+                              className="w-full"
+                              placeholder="Auto-generated from name"
+                            />
+                          ) : (
+                            item.sku
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Input
+                              type="number"
+                              value={editingItem?.unit_cost || ""}
+                              onChange={(e) => updateEditingItem("unit_cost", Number.parseFloat(e.target.value) || 0)}
+                              className="w-full"
+                              placeholder="0"
+                            />
+                          ) : (
+                            `NPR ${item.unit_cost.toLocaleString()}`
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Input
+                              type="number"
+                              value={editingItem?.unit_price || ""}
+                              onChange={(e) => updateEditingItem("unit_price", Number.parseFloat(e.target.value) || 0)}
+                              className="w-full"
+                              placeholder="0"
+                            />
+                          ) : (
+                            `NPR ${item.unit_price.toLocaleString()}`
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === item.id ? (
+                            <Input
+                              type="number"
+                              value={editingItem?.quantity || ""}
+                              onChange={(e) => updateEditingItem("quantity", Number.parseInt(e.target.value) || 0)}
+                              className="w-full"
+                              placeholder="0"
+                            />
+                          ) : (
+                            item.quantity
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          NPR {(item.unit_cost * item.quantity).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            {editingId === item.id ? (
+                              <>
+                                <Button size="sm" onClick={saveEdit} className="bg-green-600 hover:bg-green-700">
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={cancelEdit}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => startEditing(item)}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
               </TableBody>
             </Table>
