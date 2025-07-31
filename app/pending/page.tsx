@@ -313,9 +313,9 @@ export default function PendingPage() {
             if (error) throw error
 
             // Removed .eq("user_id", userId) filter
-            const { data, error: fetchError } = await supabase.from("pending").select("*")
+            const { data: fetchedData, error: fetchError } = await supabase.from("pending").select("*")
             if (fetchError) throw fetchError
-            setPendingItems(data as PendingItem[])
+            setPendingItems(fetchedData as PendingItem[])
 
             alert("Pending data uploaded successfully!")
           }
@@ -485,13 +485,16 @@ export default function PendingPage() {
                               <SelectValue placeholder="Select product from stock" />
                             </SelectTrigger>
                             <SelectContent>
-                              {stockItems
-                                .filter((stock) => stock.quantity > 0)
-                                .map((stock) => (
+                              {stockItems.map(
+                                (
+                                  stock, // Removed filter for quantity > 0
+                                ) => (
                                   <SelectItem key={stock.id} value={stock.name}>
                                     {stock.name} (Available: {stock.quantity})
+                                    {stock.quantity === 0 && " (Out of Stock)"} {/* Added indicator */}
                                   </SelectItem>
-                                ))}
+                                ),
+                              )}
                               <SelectItem value="custom">Custom Product</SelectItem>
                             </SelectContent>
                           </Select>
