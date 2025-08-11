@@ -5,10 +5,18 @@ import type React from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+} from "@/components/ui/select" // Added SelectScrollUpButton, SelectScrollDownButton
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit2, Trash2, Save, X, Download, Upload } from "lucide-react"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react" // Added useMemo
 import { exportToCsv, importFromCsv } from "@/lib/csv"
 import { getClientSideSupabase } from "@/lib/supabase-browser"
 
@@ -20,7 +28,6 @@ interface PendingItem {
   unit_price: number
   unit_cost: number
   status: string
-  // user_id: string // Removed
   created_at: string
 }
 
@@ -32,7 +39,6 @@ interface StockItem {
   unit_price: number
   quantity: number
   category: string
-  // user_id: string // Removed
   created_at: string
 }
 
@@ -44,7 +50,6 @@ interface SaleItem {
   unit_price: number
   unit_cost: number
   total_sale: number
-  // user_id: string // Removed
   created_at: string
 }
 
@@ -59,30 +64,21 @@ export default function PendingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = getClientSideSupabase()
 
+  // State for product search in select dropdown
+  const [productSearchQuery, setProductSearchQuery] = useState<string>("")
+
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true)
-      // No need to fetch user_id for filtering anymore
-      // const { data: userData, error: userError } = await supabase.auth.getUser()
-      // if (userError || !userData?.user) {
-      //   console.error("Error fetching user:", userError?.message)
-      //   setLoading(false)
-      //   return
-      // }
-      // const userId = userData.user.id // Removed
-
       try {
-        // Removed .eq("user_id", userId) filter
         const { data: pendingData, error: pendingError } = await supabase.from("pending").select("*")
         if (pendingError) throw pendingError
         setPendingItems(pendingData as PendingItem[])
 
-        // Removed .eq("user_id", userId) filter
         const { data: stockData, error: stockError } = await supabase.from("stock").select("*")
         if (stockError) throw stockError
         setStockItems(stockData as StockItem[])
 
-        // Removed .eq("user_id", userId) filter
         const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
         if (salesError) throw salesError
         setSalesItems(salesData as SaleItem[])
@@ -97,14 +93,6 @@ export default function PendingPage() {
   }, [supabase])
 
   const addNewPending = async () => {
-    // No need to fetch user_id for insertion anymore
-    // const { data: userData, error: userError } = await supabase.auth.getUser()
-    // if (userError || !userData?.user) {
-    //   console.error("Error getting user for new pending item:", userError?.message)
-    //   return
-    // }
-    // const userId = userData.user.id // Removed
-
     const today = new Date().toISOString().split("T")[0]
     const newPending: Omit<PendingItem, "id" | "created_at"> = {
       date: today,
@@ -113,7 +101,6 @@ export default function PendingPage() {
       unit_price: 0,
       unit_cost: 0,
       status: "Pending",
-      // user_id: userId, // Removed
     }
 
     try {
@@ -123,6 +110,7 @@ export default function PendingPage() {
       setEditingId(data.id)
       setEditingItem(data as PendingItem)
       setIsCustomProductSelected(false)
+      setProductSearchQuery("") // Reset search query on new item
     } catch (error: any) {
       console.error("Error adding new pending item:", error.message)
       alert("Failed to add new pending item: " + error.message)
@@ -134,19 +122,11 @@ export default function PendingPage() {
     setEditingItem({ ...item })
     const isProductInStock = stockItems.some((stock) => stock.name === item.product)
     setIsCustomProductSelected(!isProductInStock)
+    setProductSearchQuery("") // Reset search query when starting edit
   }
 
   const saveEdit = async () => {
     if (editingItem) {
-      // No need to fetch user_id for save edit anymore
-      // const { data: userData, error: userError } = await supabase.auth.getUser()
-      // if (userError || !userData?.user) {
-      //   console.error("Error getting user for save edit:", userError?.message)
-      //   alert("Failed to save: User not authenticated.")
-      //   return
-      // }
-      // const userId = userData.user.id // Removed
-
       try {
         const updatesPending = {
           date: editingItem.date,
@@ -156,7 +136,6 @@ export default function PendingPage() {
           unit_cost: editingItem.unit_cost,
           status: editingItem.status,
         }
-        // Removed .eq("user_id", userId) filter
         const { error: updatePendingError } = await supabase
           .from("pending")
           .update(updatesPending)
@@ -171,7 +150,6 @@ export default function PendingPage() {
           const stockItemToUpdate = updatedStockItems.find((stock) => stock.name === editingItem.product)
           if (stockItemToUpdate) {
             const newQuantity = stockItemToUpdate.quantity - editingItem.quantity_sent
-            // Removed .eq("user_id", userId) filter
             const { error: updateStockError } = await supabase
               .from("stock")
               .update({ quantity: newQuantity })
@@ -195,7 +173,6 @@ export default function PendingPage() {
             unit_price: editingItem.unit_price,
             unit_cost: editingItem.unit_cost,
             total_sale: editingItem.quantity_sent * editingItem.unit_price,
-            // user_id: userId, // Removed
           }
           const { data: insertedSale, error: insertSaleError } = await supabase
             .from("sales")
@@ -205,14 +182,12 @@ export default function PendingPage() {
           if (insertSaleError) throw insertSaleError
           updatedSalesItems = [...salesItems, insertedSale as SaleItem]
 
-          // Removed .eq("user_id", userId) filter
           const { error: deletePendingError } = await supabase.from("pending").delete().eq("id", editingItem.id)
           if (deletePendingError) throw deletePendingError
           updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
 
           alert(`Item "${editingItem.product}" marked as Delivered and moved to Sales!`)
         } else if (editingItem.status === "Cancelled") {
-          // Removed .eq("user_id", userId) filter
           const { error: deletePendingError } = await supabase.from("pending").delete().eq("id", editingItem.id)
           if (deletePendingError) throw deletePendingError
           updatedPendingItems = updatedPendingItems.filter((item) => item.id !== editingItem.id)
@@ -229,6 +204,7 @@ export default function PendingPage() {
         setEditingId(null)
         setEditingItem(null)
         setIsCustomProductSelected(false)
+        setProductSearchQuery("") // Reset search query after saving
       }
     }
   }
@@ -237,6 +213,7 @@ export default function PendingPage() {
     setEditingId(null)
     setEditingItem(null)
     setIsCustomProductSelected(false)
+    setProductSearchQuery("") // Reset search query on cancel
   }
 
   const deleteItem = async (id: string) => {
@@ -297,22 +274,11 @@ export default function PendingPage() {
           ]
           const importedData = importFromCsv<PendingItem>(csvString, expectedHeaders)
           if (importedData.length > 0) {
-            // No need to fetch user_id for upload anymore
-            // const { data: userData, error: userError } = await supabase.auth.getUser()
-            // if (userError || !userData?.user) {
-            //   console.error("Error getting user for upload:", userError?.message)
-            //   alert("Failed to upload: User not authenticated.")
-            //   return
-            // }
-            // const userId = userData.user.id // Removed
-
-            // Removed user_id from itemsToUpsert
             const itemsToUpsert = importedData.map((item) => ({ ...item }))
 
             const { error } = await supabase.from("pending").upsert(itemsToUpsert, { onConflict: "id" })
             if (error) throw error
 
-            // Removed .eq("user_id", userId) filter
             const { data: fetchedData, error: fetchError } = await supabase.from("pending").select("*")
             if (fetchError) throw fetchError
             setPendingItems(fetchedData as PendingItem[])
@@ -349,6 +315,17 @@ export default function PendingPage() {
         return "text-gray-600 bg-gray-100"
     }
   }
+
+  // Filter stock items for the product select dropdown based on search query
+  const filteredStockForSelect = useMemo(() => {
+    if (!productSearchQuery) {
+      return stockItems
+    }
+    const lowerCaseQuery = productSearchQuery.toLowerCase()
+    return stockItems.filter(
+      (stock) => stock.name.toLowerCase().includes(lowerCaseQuery) || stock.sku.toLowerCase().includes(lowerCaseQuery),
+    )
+  }, [stockItems, productSearchQuery])
 
   if (loading) {
     return (
@@ -485,15 +462,29 @@ export default function PendingPage() {
                               <SelectValue placeholder="Select product from stock" />
                             </SelectTrigger>
                             <SelectContent>
-                              {stockItems.map(
-                                (
-                                  stock, // Removed filter for quantity > 0
-                                ) => (
-                                  <SelectItem key={stock.id} value={stock.name}>
-                                    {stock.name} (Available: {stock.quantity})
-                                    {stock.quantity === 0 && " (Out of Stock)"} {/* Added indicator */}
-                                  </SelectItem>
-                                ),
+                              <div className="p-1">
+                                <Input
+                                  placeholder="Search products..."
+                                  value={productSearchQuery}
+                                  onChange={(e) => setProductSearchQuery(e.target.value)}
+                                  // Prevent the select from closing when typing in the search input
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              {filteredStockForSelect.length > 0 ? (
+                                <>
+                                  <SelectScrollUpButton />
+                                  {filteredStockForSelect.map((stock) => (
+                                    <SelectItem key={stock.id} value={stock.name}>
+                                      {stock.name} (Available: {stock.quantity})
+                                      {stock.quantity === 0 && " (Out of Stock)"}
+                                    </SelectItem>
+                                  ))}
+                                  <SelectScrollDownButton />
+                                </>
+                              ) : (
+                                <div className="p-2 text-center text-sm text-muted-foreground">No products found.</div>
                               )}
                               <SelectItem value="custom">Custom Product</SelectItem>
                             </SelectContent>
