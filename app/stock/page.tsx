@@ -485,11 +485,11 @@ export default function StockPage() {
                 {sortedDisplayItems.map((row, index) => {
                   if (row.type === "category-header") {
                     return (
-                      <TableRow key={`category-${row.data}-${index}`} className="bg-gray-50 hover:bg-gray-100">
-                        <TableCell colSpan={8} className="font-semibold text-lg py-3">
-                          {row.data}
-                        </TableCell>
-                      </TableRow>
+                  <TableRow key={`category-${String(row.data)}-${index}`} className="bg-gray-50 hover:bg-gray-100">
+                    <TableCell colSpan={8} className="font-semibold text-lg py-3">
+                      {typeof row.data === 'string' ? row.data : row.data.name}
+                    </TableCell>
+                  </TableRow>
                     )
                   } else {
                     const item = row.data as StockItem
